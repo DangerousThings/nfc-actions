@@ -17,11 +17,12 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
-    <PublishSingleFile>true</PublishSingleFile>
+    <PublishSingleFile>false</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PublishReadyToRun>true</PublishReadyToRun>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <PublishTrimmed>false</PublishTrimmed>
+    <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
   </PropertyGroup>
 
   <ItemGroup>

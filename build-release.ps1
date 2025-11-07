@@ -70,8 +70,22 @@ if ($BuildInstaller) {
 
         Push-Location $installerPath
 
-        # Run candle (compile)
-        & candle.exe Product.wxs -out obj\Product.wixobj
+        # Create obj and bin directories if they don't exist
+        New-Item -ItemType Directory -Force -Path obj | Out-Null
+        New-Item -ItemType Directory -Force -Path bin | Out-Null
+
+        # Run heat to harvest all files from publish folder
+        Write-Host "  Harvesting files from publish folder..." -ForegroundColor Gray
+        & heat.exe dir $publishPath -cg HarvestedFiles -gg -sfrag -srd -dr INSTALLFOLDER -var var.PublishDir -out obj\HarvestedFiles.wxs
+        if ($LASTEXITCODE -ne 0) {
+            Pop-Location
+            Write-Host "Heat (file harvesting) failed!" -ForegroundColor Red
+            exit 1
+        }
+
+        # Run candle (compile) on both wxs files
+        Write-Host "  Compiling installer..." -ForegroundColor Gray
+        & candle.exe Product.wxs obj\HarvestedFiles.wxs "-dPublishDir=$publishPath" -out obj\ -arch x64
         if ($LASTEXITCODE -ne 0) {
             Pop-Location
             Write-Host "Candle (WiX compile) failed!" -ForegroundColor Red
@@ -79,7 +93,8 @@ if ($BuildInstaller) {
         }
 
         # Run light (link)
-        & light.exe obj\Product.wixobj -out bin\NfcActions-Setup.msi -ext WixUIExtension
+        Write-Host "  Linking MSI package..." -ForegroundColor Gray
+        & light.exe obj\Product.wixobj obj\HarvestedFiles.wixobj -out bin\NfcActions-Setup.msi -ext WixUIExtension -sval
         if ($LASTEXITCODE -ne 0) {
             Pop-Location
             Write-Host "Light (WiX link) failed!" -ForegroundColor Red
