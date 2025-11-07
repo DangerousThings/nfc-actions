@@ -3,7 +3,7 @@
   <Product Id="*"
            Name="NFC Actions"
            Language="1033"
-           Version="1.0.0.0"
+           Version="1.0.2.0"
            Manufacturer="Dangerous Things"
            UpgradeCode="A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D">
 

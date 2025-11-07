@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Drawing;
+using System.Threading;
 using System.Windows;
 using System.Windows.Forms;
+using System.Windows.Media;
 using NfcActions.Services;
 using NfcActions.ViewModels;
 using Application = System.Windows.Application;
@@ -13,6 +15,7 @@ namespace NfcActions;
 /// </summary>
 public partial class App : Application
 {
+    private static Mutex? _instanceMutex;
     private NotifyIcon? _notifyIcon;
     private Icon? _customIcon;
     private MainWindow? _mainWindow;
@@ -24,6 +27,29 @@ public partial class App : Application
 
     private void Application_Startup(object sender, StartupEventArgs e)
     {
+        // Ensure only one instance runs at a time
+        bool createdNew;
+        _instanceMutex = new Mutex(true, "NfcActions_SingleInstance_Mutex", out createdNew);
+
+        if (!createdNew)
+        {
+            System.Windows.MessageBox.Show("NFC Actions is already running. Check the system tray.",
+                                          "NFC Actions",
+                                          MessageBoxButton.OK,
+                                          MessageBoxImage.Information);
+            Shutdown();
+            return;
+        }
+
+        // Workaround for DirectWrite crash - force software rendering
+        try
+        {
+            RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
+        }
+        catch
+        {
+            // Ignore if this fails
+        }
         // Initialize services
         _logService = new LogService();
         _cardReaderService = new CardReaderService(_logService);
@@ -107,5 +133,7 @@ public partial class App : Application
         _notifyIcon?.Dispose();
         _customIcon?.Dispose();
         _cardReaderService?.Dispose();
+        _instanceMutex?.ReleaseMutex();
+        _instanceMutex?.Dispose();
     }
 }
