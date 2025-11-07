@@ -25,6 +25,24 @@ public partial class App : Application
     private LogService? _logService;
     private MainViewModel? _viewModel;
 
+    public App()
+    {
+        // CRITICAL: Set software rendering mode BEFORE any WPF initialization
+        // This must be done in the constructor before InitializeComponent()
+        try
+        {
+            // Set environment variable as additional safeguard
+            Environment.SetEnvironmentVariable("DOTNET_SYSTEM_WINDOWS_DONOTUSEPRESENTATIONDPICAPABILITYTIER2ORGREATER", "1");
+
+            // Force software rendering
+            RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
+        }
+        catch
+        {
+            // If this fails, try to continue anyway
+        }
+    }
+
     private void Application_Startup(object sender, StartupEventArgs e)
     {
         // Ensure only one instance runs at a time
@@ -41,15 +59,6 @@ public partial class App : Application
             return;
         }
 
-        // Workaround for DirectWrite crash - force software rendering
-        try
-        {
-            RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
-        }
-        catch
-        {
-            // Ignore if this fails
-        }
         // Initialize services
         _logService = new LogService();
         _cardReaderService = new CardReaderService(_logService);

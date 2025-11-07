@@ -9,7 +9,7 @@ param(
 $ErrorActionPreference = "Stop"
 $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectPath = Join-Path $scriptPath "NfcActions\NfcActions.csproj"
-$publishPath = Join-Path $scriptPath "NfcActions\bin\Release\net7.0-windows\win-x64\publish"
+$publishPath = Join-Path $scriptPath "NfcActions\bin\Release\net8.0-windows\win-x64\publish"
 $installerPath = Join-Path $scriptPath "Installer"
 
 Write-Host "=== NFC Actions Release Build ===" -ForegroundColor Cyan
@@ -83,6 +83,12 @@ if ($BuildInstaller) {
             exit 1
         }
 
+        # Update the harvested file to set ID to NfcActions.exe
+        Write-Host "  Setting file ID for NfcActions.exe..." -ForegroundColor Gray
+        $harvestedContent = Get-Content obj\HarvestedFiles.wxs -Raw
+        $harvestedContent = $harvestedContent -replace '(<File Id=")([^"]+)(" KeyPath="yes" Source="\$\(var\.PublishDir\)\\NfcActions\.exe")', '$1NfcActionsExe$3'
+        Set-Content obj\HarvestedFiles.wxs -Value $harvestedContent
+
         # Run candle (compile) on both wxs files
         Write-Host "  Compiling installer..." -ForegroundColor Gray
         & candle.exe Product.wxs obj\HarvestedFiles.wxs "-dPublishDir=$publishPath" -out obj\ -arch x64
@@ -94,7 +100,7 @@ if ($BuildInstaller) {
 
         # Run light (link)
         Write-Host "  Linking MSI package..." -ForegroundColor Gray
-        & light.exe obj\Product.wixobj obj\HarvestedFiles.wixobj -out bin\NfcActions-Setup.msi -ext WixUIExtension -sval
+        & light.exe obj\Product.wixobj obj\HarvestedFiles.wixobj -out bin\NfcActions-Setup.msi -ext WixUIExtension -ext WixUtilExtension -sval
         if ($LASTEXITCODE -ne 0) {
             Pop-Location
             Write-Host "Light (WiX link) failed!" -ForegroundColor Red
