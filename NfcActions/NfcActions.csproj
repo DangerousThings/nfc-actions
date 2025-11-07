@@ -1,0 +1,28 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net7.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationIcon>Resources\icon.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="InputSimulatorCore" Version="1.0.5" />
+    <PackageReference Include="PCSC" Version="7.0.1" />
+    <PackageReference Include="PCSC.Iso7816" Version="7.0.1" />
+    <PackageReference Include="System.Management" Version="9.0.10" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Resources\*.png" />
+    <Resource Include="Resources\*.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Resources\icon.ico" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

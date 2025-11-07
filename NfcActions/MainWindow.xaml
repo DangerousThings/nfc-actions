@@ -1,0 +1,149 @@
+﻿<Window x:Class="NfcActions.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:NfcActions"
+        mc:Ignorable="d"
+        Title="NFC Actions" Height="700" Width="800"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        Closing="Window_Closing">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Grid Grid.Row="0" Margin="0,0,0,15">
+            <TextBlock Text="NFC Actions Configuration"
+                       FontSize="20"
+                       FontWeight="Bold"
+                       VerticalAlignment="Center"
+                       HorizontalAlignment="Left"/>
+            <Image Source="Resources/logo.png"
+                   Height="60"
+                   HorizontalAlignment="Right"
+                   VerticalAlignment="Center"
+                   Margin="0,0,15,0"
+                   Cursor="Hand"
+                   MouseLeftButtonDown="Logo_Click"
+                   ToolTip="Visit dangerousthings.com"/>
+        </Grid>
+
+        <!-- Readers List -->
+        <GroupBox Grid.Row="1" Header="Active Readers" Margin="0,0,0,15">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <ListBox Grid.Row="0"
+                         ItemsSource="{Binding Readers}"
+                         Margin="0,0,0,5"
+                         MaxHeight="100">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <CheckBox IsChecked="{Binding IsEnabled}"
+                                      Content="{Binding Name}"
+                                      Margin="2"
+                                      Padding="3,2"/>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Padding" Value="0"/>
+                            <Setter Property="Margin" Value="0"/>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                </ListBox>
+
+                <TextBlock Grid.Row="1"
+                           Text="Check/uncheck readers to enable/disable monitoring. Settings are saved automatically."
+                           FontSize="11"
+                           Foreground="Gray"
+                           TextWrapping="Wrap"/>
+            </Grid>
+        </GroupBox>
+
+        <!-- Actions -->
+        <GroupBox Grid.Row="2" Header="Actions to Perform on Card Detection" Margin="0,0,0,15">
+            <StackPanel Margin="10">
+                <CheckBox IsChecked="{Binding CopyToClipboard}"
+                          Content="Copy NDEF data to clipboard"
+                          Margin="0,3"/>
+                <CheckBox IsChecked="{Binding LaunchUrls}"
+                          Content="Launch URLs in default browser"
+                          Margin="0,3"/>
+                <CheckBox IsChecked="{Binding TypeAsKeyboard}"
+                          Content="Type NDEF content as keyboard input"
+                          Margin="0,3"/>
+                <TextBlock Text="Note: Only the payload from the first NDEF record will be used."
+                           FontSize="11"
+                           Foreground="Gray"
+                           Margin="0,5,0,0"
+                           TextWrapping="Wrap"/>
+            </StackPanel>
+        </GroupBox>
+
+        <!-- Activity Log -->
+        <GroupBox Grid.Row="3" Header="Activity Log">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <ListBox Grid.Row="0"
+                         ItemsSource="{Binding LogEntries}"
+                         Margin="0,0,0,5"
+                         ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding FormattedMessage}"
+                                       FontFamily="Consolas"
+                                       FontSize="11"
+                                       TextWrapping="Wrap">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Level}" Value="Error">
+                                                <Setter Property="Foreground" Value="Red"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Level}" Value="Warning">
+                                                <Setter Property="Foreground" Value="Orange"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Level}" Value="Debug">
+                                                <Setter Property="Foreground" Value="Gray"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Level}" Value="Info">
+                                                <Setter Property="Foreground" Value="Black"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Padding" Value="2,1"/>
+                            <Setter Property="Margin" Value="0"/>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                </ListBox>
+
+                <TextBlock Grid.Row="1"
+                           Text="Real-time activity log showing reader events, card detection, and NDEF processing."
+                           FontSize="11"
+                           Foreground="Gray"
+                           TextWrapping="Wrap"/>
+            </Grid>
+        </GroupBox>
+    </Grid>
+</Window>
