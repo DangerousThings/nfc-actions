@@ -7,6 +7,21 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationIcon>Resources\icon.ico</ApplicationIcon>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Company>Dangerous Things</Company>
+    <Product>NFC Actions</Product>
+    <Description>NFC card reader monitoring and action automation</Description>
+    <Copyright>Copyright © 2025 Dangerous Things</Copyright>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)'=='Release'">
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
 
   <ItemGroup>
@@ -22,7 +37,18 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="Resources\icon.ico" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Resources\**\*">
+      <Link>Resources\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
   </ItemGroup>
+
+  <Target Name="CopyResourcesOnPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <ResourceFiles Include="$(ProjectDir)Resources\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(ResourceFiles)" DestinationFolder="$(PublishDir)Resources\%(RecursiveDir)" SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

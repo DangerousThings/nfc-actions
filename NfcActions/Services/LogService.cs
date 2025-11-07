@@ -21,9 +21,8 @@ public class LogService
     {
         _syncContext = SynchronizationContext.Current;
 
-        // Create log file in the same directory as the executable
-        var exePath = Assembly.GetExecutingAssembly().Location;
-        var exeDir = Path.GetDirectoryName(exePath) ?? Environment.CurrentDirectory;
+        // Create log file in the app directory (works for single-file publish)
+        var exeDir = AppContext.BaseDirectory;
         var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
         _logFilePath = Path.Combine(exeDir, $"nfc-actions-debug-{timestamp}.log");
 
