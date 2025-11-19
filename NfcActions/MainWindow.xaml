@@ -19,11 +19,16 @@
 
         <!-- Header -->
         <Grid Grid.Row="0" Margin="0,0,0,15">
-            <TextBlock Text="NFC Actions Configuration"
-                       FontSize="20"
-                       FontWeight="Bold"
-                       VerticalAlignment="Center"
-                       HorizontalAlignment="Left"/>
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Left">
+                <TextBlock Text="NFC Actions Configuration"
+                           FontSize="20"
+                           FontWeight="Bold"/>
+                <TextBlock x:Name="VersionText"
+                           Text="v1.0.3"
+                           FontSize="10"
+                           Foreground="Gray"
+                           Margin="0,2,0,0"/>
+            </StackPanel>
             <Image Source="Resources/logo.png"
                    Height="60"
                    HorizontalAlignment="Right"

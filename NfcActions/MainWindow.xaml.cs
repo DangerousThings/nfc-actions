@@ -19,6 +19,13 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = viewModel;
+
+        // Set version number from assembly
+        var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+        if (version != null)
+        {
+            VersionText.Text = $"v{version.Major}.{version.Minor}.{version.Build}";
+        }
     }
 
     private void Window_Closing(object? sender, CancelEventArgs e)
