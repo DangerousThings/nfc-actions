@@ -24,6 +24,7 @@ public partial class App : Application
     private ActionService? _actionService;
     private LogService? _logService;
     private MainViewModel? _viewModel;
+    private System.ComponentModel.CancelEventHandler? _windowClosingHandler;
 
     public App()
     {
@@ -121,16 +122,44 @@ public partial class App : Application
 
     private void ShowMainWindow()
     {
-        if (_mainWindow != null)
+        // If window was closed, recreate it
+        if (_mainWindow == null || !_mainWindow.IsLoaded)
         {
-            _mainWindow.Show();
-            _mainWindow.WindowState = WindowState.Normal;
-            _mainWindow.Activate();
+            if (_viewModel == null) return;
+
+            _mainWindow = new MainWindow(_viewModel);
+
+            // Handle window closing - hide instead of close
+            _windowClosingHandler = (s, e) =>
+            {
+                e.Cancel = true;
+                if (_mainWindow != null)
+                {
+                    _mainWindow.Hide();
+                }
+            };
+
+            _mainWindow.Closing += _windowClosingHandler;
         }
+
+        _mainWindow.Show();
+        _mainWindow.WindowState = WindowState.Normal;
+        _mainWindow.Activate();
     }
 
     private void ExitApplication()
     {
+        // Properly close the main window if it exists
+        if (_mainWindow != null)
+        {
+            // Remove the cancel handler so the window can actually close
+            if (_windowClosingHandler != null)
+            {
+                _mainWindow.Closing -= _windowClosingHandler;
+            }
+            _mainWindow.Close();
+        }
+
         _notifyIcon?.Dispose();
         _customIcon?.Dispose();
         _cardReaderService?.Dispose();
