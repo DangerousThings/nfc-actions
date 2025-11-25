@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Drawing;
+using System.Linq;
 using System.Threading;
 using System.Windows;
 using System.Windows.Forms;
@@ -60,8 +61,15 @@ public partial class App : Application
             return;
         }
 
+        // Check for -debug command line argument
+        var args = e.Args;
+        var debugMode = args.Any(arg =>
+            arg.Equals("-debug", StringComparison.OrdinalIgnoreCase) ||
+            arg.Equals("--debug", StringComparison.OrdinalIgnoreCase) ||
+            arg.Equals("/debug", StringComparison.OrdinalIgnoreCase));
+
         // Initialize services
-        _logService = new LogService();
+        _logService = new LogService(enableFileLogging: debugMode);
         _cardReaderService = new CardReaderService(_logService);
         _settingsService = new SettingsService();
         _actionService = new ActionService();

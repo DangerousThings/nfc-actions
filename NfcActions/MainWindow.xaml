@@ -24,7 +24,7 @@
                            FontSize="20"
                            FontWeight="Bold"/>
                 <TextBlock x:Name="VersionText"
-                           Text="v1.0.4"
+                           Text="v1.0.5"
                            FontSize="10"
                            Foreground="Gray"
                            Margin="0,2,0,0"/>

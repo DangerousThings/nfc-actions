@@ -10,26 +10,31 @@ namespace NfcActions.Services;
 public class LogService
 {
     private readonly SynchronizationContext? _syncContext;
-    private readonly string _logFilePath;
+    private readonly string? _logFilePath;
     private readonly object _fileLock = new();
+    private readonly bool _fileLoggingEnabled;
 
     public ObservableCollection<LogEntry> LogEntries { get; } = new();
 
     private const int MAX_LOG_ENTRIES = 500;
 
-    public LogService()
+    public LogService(bool enableFileLogging = false)
     {
         _syncContext = SynchronizationContext.Current;
+        _fileLoggingEnabled = enableFileLogging;
 
-        // Create log file in the app directory (works for single-file publish)
-        var exeDir = AppContext.BaseDirectory;
-        var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-        _logFilePath = Path.Combine(exeDir, $"nfc-actions-debug-{timestamp}.log");
+        if (_fileLoggingEnabled)
+        {
+            // Create log file in the app directory (works for single-file publish)
+            var exeDir = AppContext.BaseDirectory;
+            var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            _logFilePath = Path.Combine(exeDir, $"nfc-actions-debug-{timestamp}.log");
 
-        // Write initial header
-        WriteToFile($"=== NFC Actions Debug Log - Started at {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");
-        WriteToFile($"Log file: {_logFilePath}");
-        WriteToFile("");
+            // Write initial header
+            WriteToFile($"=== NFC Actions Debug Log - Started at {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");
+            WriteToFile($"Log file: {_logFilePath}");
+            WriteToFile("");
+        }
     }
 
     public void Log(string message, LogLevel level = LogLevel.Info)
@@ -57,6 +62,9 @@ public class LogService
 
     private void WriteToFile(string message)
     {
+        if (!_fileLoggingEnabled || _logFilePath == null)
+            return;
+
         try
         {
             lock (_fileLock)
