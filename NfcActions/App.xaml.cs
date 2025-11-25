@@ -86,12 +86,14 @@ public partial class App : Application
             // Fall back to default if custom icon can't be loaded
         }
 
-        // Create system tray icon
+        // Create system tray icon with version in tooltip
+        var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+        var versionString = version != null ? $" v{version.Major}.{version.Minor}.{version.Build}" : "";
         _notifyIcon = new NotifyIcon
         {
             Icon = _customIcon ?? SystemIcons.Application,
             Visible = true,
-            Text = "NFC Actions"
+            Text = $"NFC Actions{versionString}"
         };
 
         // Set up context menu

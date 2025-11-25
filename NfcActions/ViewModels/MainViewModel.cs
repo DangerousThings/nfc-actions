@@ -1,3 +1,4 @@
+using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
@@ -5,6 +6,12 @@ using NfcActions.Models;
 using NfcActions.Services;
 
 namespace NfcActions.ViewModels;
+
+public class SuffixOption
+{
+    public SuffixType Value { get; set; }
+    public string DisplayName { get; set; } = "";
+}
 
 public class MainViewModel : INotifyPropertyChanged
 {
@@ -17,8 +24,20 @@ public class MainViewModel : INotifyPropertyChanged
     private bool _copyToClipboard;
     private bool _launchUrls;
     private bool _typeAsKeyboard;
+    private SuffixOption _selectedSuffix = null!;
 
     public ObservableCollection<ReaderItem> Readers { get; } = new();
+
+    public ObservableCollection<SuffixOption> SuffixOptions { get; } = new()
+    {
+        new SuffixOption { Value = SuffixType.None, DisplayName = "(none)" },
+        new SuffixOption { Value = SuffixType.Enter, DisplayName = "[Enter]" },
+        new SuffixOption { Value = SuffixType.Tab, DisplayName = "[Tab]" },
+        new SuffixOption { Value = SuffixType.Comma, DisplayName = "Comma (,)" },
+        new SuffixOption { Value = SuffixType.Colon, DisplayName = "Colon (:)" },
+        new SuffixOption { Value = SuffixType.Semicolon, DisplayName = "Semicolon (;)" },
+        new SuffixOption { Value = SuffixType.Period, DisplayName = "Period (.)" }
+    };
 
     public bool CopyToClipboard
     {
@@ -65,6 +84,21 @@ public class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    public SuffixOption SelectedSuffix
+    {
+        get => _selectedSuffix;
+        set
+        {
+            if (_selectedSuffix != value && value != null)
+            {
+                _selectedSuffix = value;
+                OnPropertyChanged(nameof(SelectedSuffix));
+                _settings.Suffix = value.Value;
+                _settingsService.Save(_settings);
+            }
+        }
+    }
+
     public ObservableCollection<LogEntry> LogEntries => _logService.LogEntries;
 
     public MainViewModel(
@@ -83,6 +117,7 @@ public class MainViewModel : INotifyPropertyChanged
         _copyToClipboard = _settings.CopyToClipboard;
         _launchUrls = _settings.LaunchUrls;
         _typeAsKeyboard = _settings.TypeAsKeyboard;
+        _selectedSuffix = SuffixOptions.FirstOrDefault(s => s.Value == _settings.Suffix) ?? SuffixOptions[0];
 
         // Set up event handlers
         _cardReaderService.ReaderAdded += OnReaderAdded;
@@ -203,7 +238,7 @@ public class MainViewModel : INotifyPropertyChanged
         if (TypeAsKeyboard)
         {
             _logService.Info("Typing as keyboard input...");
-            _actionService.TypeText(record.Payload);
+            _actionService.TypeText(record.Payload, SelectedSuffix.Value);
         }
     }
 

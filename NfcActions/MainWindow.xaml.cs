@@ -24,7 +24,9 @@ public partial class MainWindow : Window
         var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
         if (version != null)
         {
-            VersionText.Text = $"v{version.Major}.{version.Minor}.{version.Build}";
+            var versionString = $"v{version.Major}.{version.Minor}.{version.Build}";
+            VersionText.Text = versionString;
+            Title = $"NFC Actions {versionString}";
         }
     }
 

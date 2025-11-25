@@ -24,7 +24,7 @@
                            FontSize="20"
                            FontWeight="Bold"/>
                 <TextBlock x:Name="VersionText"
-                           Text="v1.0.3"
+                           Text="v1.0.4"
                            FontSize="10"
                            Foreground="Gray"
                            Margin="0,2,0,0"/>
@@ -84,9 +84,23 @@
                 <CheckBox IsChecked="{Binding LaunchUrls}"
                           Content="Launch URLs in default browser"
                           Margin="0,3"/>
-                <CheckBox IsChecked="{Binding TypeAsKeyboard}"
-                          Content="Type NDEF content as keyboard input"
-                          Margin="0,3"/>
+                <StackPanel Orientation="Horizontal" Margin="0,3">
+                    <CheckBox IsChecked="{Binding TypeAsKeyboard}"
+                              Content="Type NDEF content as keyboard input"
+                              VerticalAlignment="Center"
+                              x:Name="TypeAsKeyboardCheckbox"/>
+                    <TextBlock Text="Suffix:"
+                               Margin="20,0,5,0"
+                               VerticalAlignment="Center"
+                               IsEnabled="{Binding IsChecked, ElementName=TypeAsKeyboardCheckbox}"/>
+                    <ComboBox ItemsSource="{Binding SuffixOptions}"
+                              SelectedItem="{Binding SelectedSuffix}"
+                              DisplayMemberPath="DisplayName"
+                              Width="110"
+                              VerticalAlignment="Center"
+                              IsEnabled="{Binding IsChecked, ElementName=TypeAsKeyboardCheckbox}"
+                              ToolTip="Character or key to append after typing"/>
+                </StackPanel>
                 <TextBlock Text="Note: Only the payload from the first NDEF record will be used."
                            FontSize="11"
                            Foreground="Gray"
