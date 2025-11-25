@@ -103,3 +103,11 @@ publish/
 # Windows
 Thumbs.db
 ehthumbs.db
+
+# Installer output files (distribute via GitHub Releases)
+*.msi
+
+# WiX intermediate files
+*.wixobj
+*.wixpdb
+HarvestedFiles.wxs
