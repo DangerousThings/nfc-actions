@@ -2,24 +2,33 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using PCSC;
 using PCSC.Exceptions;
+using PCSC.Monitoring;
 
 namespace NfcActions.Services;
 
 public class CardReaderService : IDisposable
 {
-    private readonly Timer _pollTimer;
-    private readonly Dictionary<string, bool> _readerCardPresent = new();
+    // Tracks the real hardware presence of a card per reader (updated regardless of
+    // whether the reader is enabled, so re-enabling a reader can surface a present card).
+    private readonly Dictionary<string, bool> _cardPresent = new();
+    private readonly HashSet<string> _knownReaders = new();
     private readonly HashSet<string> _disabledReaders = new();
     private readonly SynchronizationContext? _syncContext;
-    private readonly object _lock = new();
+    private readonly object _lock = new();           // guards the state dictionaries/sets
+    private readonly object _monitorLock = new();     // serializes monitor lifecycle changes
     private readonly LogService? _logService;
+    private readonly IContextFactory _contextFactory = ContextFactory.Instance;
 
-    private const int POLL_INTERVAL_MS = 500;
+    private DeviceMonitor? _deviceMonitor;
+    private SCardMonitor? _cardMonitor;
+    private volatile bool _disposed;
+
     private const int MAX_RETRY_ATTEMPTS = 3;
     private const int INITIAL_RETRY_DELAY_MS = 100;
-    private const int STATUS_TIMEOUT_MS = 1000;
+    private const int MONITOR_RESTART_DELAY_MS = 1000;
 
     public event EventHandler<ReaderEventArgs>? ReaderAdded;
     public event EventHandler<ReaderEventArgs>? ReaderRemoved;
@@ -29,7 +38,6 @@ public class CardReaderService : IDisposable
     public CardReaderService(LogService? logService = null)
     {
         _syncContext = SynchronizationContext.Current;
-        _pollTimer = new Timer(PollReaders, null, Timeout.Infinite, Timeout.Infinite);
         _logService = logService;
     }
 
@@ -37,137 +45,292 @@ public class CardReaderService : IDisposable
     {
         _logService?.Info("Starting CardReaderService...");
 
-        // Initialize with current readers
-        RefreshReaders();
+        // Watch for readers being attached/detached (PnP-based, event-driven - no polling).
+        StartDeviceMonitor();
 
-        // Start polling
-        _pollTimer.Change(POLL_INTERVAL_MS, POLL_INTERVAL_MS);
+        // Seed the current reader set and begin card monitoring. From here on the device
+        // monitor's Initialized/StatusChanged events keep the reader set reconciled, and the
+        // card monitor blocks on SCardGetStatusChange instead of polling.
+        UpdateReaders(GetAvailableReaders());
+
         _logService?.Info("CardReaderService started successfully");
     }
 
-    private void PollReaders(object? state)
+    private void StartDeviceMonitor()
     {
-        try
+        lock (_monitorLock)
         {
-            RefreshReaders();
-            MonitorCardStates();
-        }
-        catch (Exception)
-        {
-            // Error during polling, continue anyway
-        }
-    }
+            if (_disposed)
+                return;
 
-    private void RefreshReaders()
-    {
-        lock (_lock)
-        {
             try
             {
-                using var context = ContextFactory.Instance.Establish(SCardScope.System);
-                var currentReaders = context.GetReaders()?.ToList() ?? new List<string>();
-
-                // Find removed readers
-                var removedReaders = _readerCardPresent.Keys.Except(currentReaders).ToList();
-                foreach (var reader in removedReaders)
-                {
-                    _readerCardPresent.Remove(reader);
-                    _logService?.Info($"Reader removed: {reader}");
-                    RaiseEvent(() => ReaderRemoved?.Invoke(this, new ReaderEventArgs(reader)));
-                }
-
-                // Find new readers
-                var newReaders = currentReaders.Except(_readerCardPresent.Keys).ToList();
-                foreach (var reader in newReaders)
-                {
-                    _readerCardPresent[reader] = false;
-                    _logService?.Info($"Reader added: {reader}");
-                    RaiseEvent(() => ReaderAdded?.Invoke(this, new ReaderEventArgs(reader)));
-                }
+                var monitor = new DeviceMonitor(_contextFactory, SCardScope.System);
+                monitor.Initialized += OnDeviceListChanged;
+                monitor.StatusChanged += OnDeviceListChanged;
+                monitor.MonitorException += OnDeviceMonitorException;
+                _deviceMonitor = monitor;
+                monitor.Start();
             }
             catch (Exception ex)
             {
-                _logService?.Error($"Error refreshing readers: {ex.Message}");
+                _logService?.Error($"Failed to start device monitor: {ex.Message}");
             }
         }
     }
 
-    private void MonitorCardStates()
+    private void StopDeviceMonitor()
     {
-        lock (_lock)
+        DeviceMonitor? monitor;
+        lock (_monitorLock)
         {
-            foreach (var readerName in _readerCardPresent.Keys.ToList())
-            {
-                // Skip disabled readers
-                if (_disabledReaders.Contains(readerName))
-                    continue;
-
-                try
-                {
-                    var isPresent = IsCardPresent(readerName);
-                    var wasPresent = _readerCardPresent[readerName];
-
-                    if (isPresent && !wasPresent)
-                    {
-                        _readerCardPresent[readerName] = true;
-                        _logService?.Info($"Card inserted on reader: {readerName}");
-                        var cardData = ReadCardData(readerName);
-
-                        if (cardData != null && cardData.Length > 0)
-                        {
-                            _logService?.Debug($"Read {cardData.Length} bytes from card");
-                            _logService?.Debug($"Card data (hex): {BitConverter.ToString(cardData).Replace("-", " ")}");
-                        }
-                        else
-                        {
-                            _logService?.Warning("No data read from card");
-                        }
-
-                        RaiseEvent(() => CardInserted?.Invoke(this, new CardEventArgs(readerName, cardData)));
-                    }
-                    else if (!isPresent && wasPresent)
-                    {
-                        _readerCardPresent[readerName] = false;
-                        _logService?.Info($"Card removed from reader: {readerName}");
-                        RaiseEvent(() => CardRemoved?.Invoke(this, new CardEventArgs(readerName, null)));
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logService?.Error($"Error monitoring reader {readerName}: {ex.Message}");
-                }
-            }
+            monitor = _deviceMonitor;
+            _deviceMonitor = null;
         }
-    }
 
-    private bool IsCardPresent(string readerName)
-    {
+        if (monitor == null)
+            return;
+
         try
         {
-            using var context = ContextFactory.Instance.Establish(SCardScope.System);
+            monitor.Initialized -= OnDeviceListChanged;
+            monitor.StatusChanged -= OnDeviceListChanged;
+            monitor.MonitorException -= OnDeviceMonitorException;
+            monitor.Cancel();
+            monitor.Dispose();
+        }
+        catch (Exception ex)
+        {
+            _logService?.Debug($"Error stopping device monitor: {ex.Message}");
+        }
+    }
 
-            var readerStates = new[]
+    private void OnDeviceListChanged(object sender, DeviceChangeEventArgs e)
+    {
+        UpdateReaders(e.AllReaders);
+    }
+
+    private void OnDeviceMonitorException(object sender, DeviceMonitorExceptionEventArgs e)
+    {
+        _logService?.Error($"Device monitor error: {e.Exception.Message}");
+
+        Task.Run(async () =>
+        {
+            await Task.Delay(MONITOR_RESTART_DELAY_MS).ConfigureAwait(false);
+            if (_disposed)
+                return;
+
+            StopDeviceMonitor();
+            StartDeviceMonitor();
+
+            if (!_disposed)
+                UpdateReaders(GetAvailableReaders());
+        });
+    }
+
+    /// <summary>
+    /// Reconciles the set of attached readers, raising ReaderAdded/ReaderRemoved for the
+    /// delta and (re)starting the card monitor on the new set. Idempotent - a no-op when
+    /// the reader set is unchanged.
+    /// </summary>
+    private void UpdateReaders(IEnumerable<string> currentReaders)
+    {
+        var current = (currentReaders ?? Enumerable.Empty<string>())
+            .Where(r => !string.IsNullOrEmpty(r))
+            .Distinct()
+            .ToList();
+
+        List<string> added;
+        List<string> removed;
+        string[] snapshot;
+
+        lock (_lock)
+        {
+            added = current.Except(_knownReaders).ToList();
+            removed = _knownReaders.Except(current).ToList();
+
+            if (added.Count == 0 && removed.Count == 0)
+                return;
+
+            foreach (var reader in removed)
             {
-                new SCardReaderState
-                {
-                    ReaderName = readerName
-                }
-            };
-
-            var result = context.GetStatusChange(STATUS_TIMEOUT_MS, readerStates);
-
-            if (result == SCardError.Success && readerStates.Length > 0)
+                _knownReaders.Remove(reader);
+                _cardPresent.Remove(reader);
+            }
+            foreach (var reader in added)
             {
-                var state = readerStates[0].EventState;
-                return (state & SCRState.Present) == SCRState.Present;
+                _knownReaders.Add(reader);
             }
 
-            return false;
+            snapshot = _knownReaders.ToArray();
         }
-        catch
+
+        foreach (var reader in removed)
         {
-            return false;
+            _logService?.Info($"Reader removed: {reader}");
+            RaiseEvent(() => ReaderRemoved?.Invoke(this, new ReaderEventArgs(reader)));
         }
+        foreach (var reader in added)
+        {
+            _logService?.Info($"Reader added: {reader}");
+            RaiseEvent(() => ReaderAdded?.Invoke(this, new ReaderEventArgs(reader)));
+        }
+
+        RestartCardMonitor(snapshot);
+    }
+
+    private void RestartCardMonitor(string[] readers)
+    {
+        lock (_monitorLock)
+        {
+            if (_disposed)
+                return;
+
+            StopCardMonitorLocked();
+
+            if (readers.Length == 0)
+            {
+                _logService?.Debug("No readers to monitor for card events");
+                return;
+            }
+
+            try
+            {
+                var monitor = new SCardMonitor(_contextFactory, SCardScope.System);
+                monitor.Initialized += OnCardInitialized;
+                monitor.CardInserted += OnCardInserted;
+                monitor.CardRemoved += OnCardRemoved;
+                monitor.MonitorException += OnCardMonitorException;
+                _cardMonitor = monitor;
+                monitor.Start(readers);
+                _logService?.Debug($"Monitoring {readers.Length} reader(s) for card events");
+            }
+            catch (Exception ex)
+            {
+                _logService?.Error($"Failed to start card monitor: {ex.Message}");
+            }
+        }
+    }
+
+    // Must be called while holding _monitorLock.
+    private void StopCardMonitorLocked()
+    {
+        var monitor = _cardMonitor;
+        _cardMonitor = null;
+        if (monitor == null)
+            return;
+
+        try
+        {
+            monitor.Initialized -= OnCardInitialized;
+            monitor.CardInserted -= OnCardInserted;
+            monitor.CardRemoved -= OnCardRemoved;
+            monitor.MonitorException -= OnCardMonitorException;
+            monitor.Cancel();
+            monitor.Dispose();
+        }
+        catch (Exception ex)
+        {
+            _logService?.Debug($"Error stopping card monitor: {ex.Message}");
+        }
+    }
+
+    private void OnCardInitialized(object sender, CardStatusEventArgs e)
+    {
+        // Reports the state of each reader when monitoring (re)starts; a card already sitting
+        // on a reader at startup only shows up here, not via CardInserted.
+        HandleCardState(e.ReaderName, (e.State & SCRState.Present) == SCRState.Present);
+    }
+
+    private void OnCardInserted(object sender, CardStatusEventArgs e)
+    {
+        HandleCardState(e.ReaderName, true);
+    }
+
+    private void OnCardRemoved(object sender, CardStatusEventArgs e)
+    {
+        HandleCardState(e.ReaderName, false);
+    }
+
+    private void OnCardMonitorException(object sender, PCSCException exception)
+    {
+        _logService?.Error($"Card monitor error: {exception.Message}");
+
+        Task.Run(async () =>
+        {
+            await Task.Delay(MONITOR_RESTART_DELAY_MS).ConfigureAwait(false);
+            if (_disposed)
+                return;
+
+            string[] readers;
+            lock (_lock)
+            {
+                readers = _knownReaders.ToArray();
+            }
+            RestartCardMonitor(readers);
+        });
+    }
+
+    /// <summary>
+    /// Applies a card presence change for a reader, de-duplicating against the last known
+    /// state and raising CardInserted/CardRemoved only on a real transition for an enabled
+    /// reader. Presence is tracked even for disabled readers.
+    /// </summary>
+    private void HandleCardState(string readerName, bool present)
+    {
+        if (string.IsNullOrEmpty(readerName))
+            return;
+
+        bool raiseInsert;
+        bool raiseRemove;
+
+        lock (_lock)
+        {
+            var known = _cardPresent.TryGetValue(readerName, out var wasPresent);
+            if (known && wasPresent == present)
+                return; // No change - ignore duplicate notification.
+
+            _cardPresent[readerName] = present;
+
+            if (!present && !known)
+                return; // First time we've seen this reader and it's empty - nothing to report.
+
+            if (_disabledReaders.Contains(readerName))
+                return; // Track state, but take no action on disabled readers.
+
+            raiseInsert = present;
+            raiseRemove = !present;
+        }
+
+        if (raiseInsert)
+        {
+            RaiseCardInserted(readerName);
+        }
+        else if (raiseRemove)
+        {
+            _logService?.Info($"Card removed from reader: {readerName}");
+            RaiseEvent(() => CardRemoved?.Invoke(this, new CardEventArgs(readerName, null)));
+        }
+    }
+
+    // Reads the card and raises CardInserted. Runs on the monitor's background thread (or a
+    // task thread when re-enabling a reader) so the read never blocks the UI thread.
+    private void RaiseCardInserted(string readerName)
+    {
+        _logService?.Info($"Card inserted on reader: {readerName}");
+        var cardData = ReadCardData(readerName);
+
+        if (cardData != null && cardData.Length > 0)
+        {
+            _logService?.Debug($"Read {cardData.Length} bytes from card");
+            _logService?.Debug($"Card data (hex): {BitConverter.ToString(cardData).Replace("-", " ")}");
+        }
+        else
+        {
+            _logService?.Warning("No data read from card");
+        }
+
+        RaiseEvent(() => CardInserted?.Invoke(this, new CardEventArgs(readerName, cardData)));
     }
 
     public List<string> GetAvailableReaders()
@@ -185,10 +348,18 @@ public class CardReaderService : IDisposable
 
     public void EnableReader(string readerName)
     {
+        bool cardPresent;
         lock (_lock)
         {
             _disabledReaders.Remove(readerName);
+            cardPresent = _cardPresent.TryGetValue(readerName, out var present) && present;
         }
+
+        // If a card is already on the reader when it's re-enabled, surface it now (the
+        // monitor won't re-fire, since there's no PC/SC state change). Read off-thread so
+        // the UI stays responsive.
+        if (cardPresent)
+            Task.Run(() => RaiseCardInserted(readerName));
     }
 
     public void DisableReader(string readerName)
@@ -349,6 +520,21 @@ public class CardReaderService : IDisposable
             if (atr != null && atr.Length > 0)
             {
                 _logService?.Debug($"ATR: {BitConverter.ToString(atr).Replace("-", " ")}");
+            }
+
+            // Get UID using PC/SC GET DATA command (FF CA 00 00 00)
+            var getUid = new byte[] { 0xFF, 0xCA, 0x00, 0x00, 0x00 };
+            var uidResponse = TransmitApdu(reader, getUid, "Get UID");
+            if (uidResponse != null && uidResponse.Length > 2 && IsSuccess(uidResponse))
+            {
+                var uid = new byte[uidResponse.Length - 2];
+                Array.Copy(uidResponse, uid, uid.Length);
+                var uidReversed = uid.Reverse().ToArray();
+                _logService?.Info($"Tag UID: {BitConverter.ToString(uid).Replace("-", " ")} (MSB: {BitConverter.ToString(uidReversed).Replace("-", " ")})");
+            }
+            else
+            {
+                _logService?.Warning("Could not retrieve tag UID");
             }
 
             // Detect card type
@@ -947,7 +1133,12 @@ public class CardReaderService : IDisposable
 
     public void Dispose()
     {
-        _pollTimer?.Dispose();
+        _disposed = true;
+        StopDeviceMonitor();
+        lock (_monitorLock)
+        {
+            StopCardMonitorLocked();
+        }
     }
 }
 
